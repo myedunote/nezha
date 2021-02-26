@@ -2,18 +2,26 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
+	"flag"
 	"fmt"
-	"io"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
-	"github.com/spf13/cobra"
+	"github.com/genkiroid/cert"
+	"github.com/go-ping/ping"
+	"github.com/p14yground/go-github-selfupdate/selfupdate"
 	"google.golang.org/grpc"
 
 	"github.com/naiba/nezha/model"
+	"github.com/naiba/nezha/pkg/utils"
 	pb "github.com/naiba/nezha/proto"
 	"github.com/naiba/nezha/service/dao"
 	"github.com/naiba/nezha/service/monitor"
@@ -21,34 +29,26 @@ import (
 )
 
 var (
-	clientID     string
 	server       string
 	clientSecret string
-	debug        bool
 	version      string
-
-	rootCmd = &cobra.Command{
-		Use:   "nezha-agent",
-		Short: "「哪吒面板」监控、备份、站点管理一站式服务",
-		Long: `哪吒面板
-================================
-监控、备份、站点管理一站式服务
-啦啦啦，啦啦啦，我是 mjj 小行家`,
-		Run:     run,
-		Version: version,
-	}
 )
 
 var (
-	endReport      time.Time
 	reporting      bool
 	client         pb.NezhaServiceClient
 	ctx            = context.Background()
-	delayWhenError = time.Second * 10
-	updateCh       = make(chan struct{}, 0)
+	delayWhenError = time.Second * 10       // Agent 重连间隔
+	updateCh       = make(chan struct{}, 0) // Agent 自动更新间隔
+	httpClient     = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 )
-
-const AGENT_UPGRADE = 55
 
 func doSelfUpdate() {
 	defer func() {
@@ -56,7 +56,7 @@ func doSelfUpdate() {
 		updateCh <- struct{}{}
 	}()
 	v := semver.MustParse(version)
-	log.Println("check update", v)
+	log.Println("Check update", v)
 	latest, err := selfupdate.UpdateSelf(v, "naiba/nezha")
 	if err != nil {
 		log.Println("Binary update failed:", err)
@@ -67,47 +67,56 @@ func doSelfUpdate() {
 		log.Println("Current binary is the latest version", version)
 	} else {
 		log.Println("Successfully updated to version", latest.Version)
-		os.Exit(AGENT_UPGRADE)
+		os.Exit(1)
 	}
+}
+
+func init() {
+	cert.TimeoutSeconds = 30
 }
 
 func main() {
 	// 来自于 GoReleaser 的版本号
 	dao.Version = version
 
-	rootCmd.PersistentFlags().StringVarP(&server, "server", "s", "localhost:5555", "客户端ID")
-	rootCmd.PersistentFlags().StringVarP(&clientID, "id", "i", "", "客户端ID")
-	rootCmd.PersistentFlags().StringVarP(&clientSecret, "secret", "p", "", "客户端Secret")
-	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "开启Debug")
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
+	var debug bool
+	flag.String("i", "", "unused 旧Agent配置兼容")
+	flag.BoolVar(&debug, "d", false, "允许不安全连接")
+	flag.StringVar(&server, "s", "localhost:5555", "管理面板RPC端口")
+	flag.StringVar(&clientSecret, "p", "", "Agent连接Secret")
+	flag.Parse()
 
-func run(cmd *cobra.Command, args []string) {
 	dao.Conf = &model.Config{
 		Debug: debug,
 	}
+
+	if server == "" || clientSecret == "" {
+		flag.Usage()
+		return
+	}
+
+	run()
+}
+
+func run() {
 	auth := rpc.AuthHandler{
-		ClientID:     clientID,
 		ClientSecret: clientSecret,
 	}
 
 	// 上报服务器信息
 	go reportState()
 
-	go func() {
-		for range updateCh {
-			go doSelfUpdate()
-		}
-	}()
-
-	updateCh <- struct{}{}
+	if version != "" {
+		go func() {
+			for range updateCh {
+				go doSelfUpdate()
+			}
+		}()
+		updateCh <- struct{}{}
+	}
 
 	var err error
 	var conn *grpc.ClientConn
-	var hc pb.NezhaService_HeartbeatClient
 
 	retry := func() {
 		log.Println("Error to close connection ...")
@@ -127,61 +136,151 @@ func run(cmd *cobra.Command, args []string) {
 		}
 		client = pb.NewNezhaServiceClient(conn)
 		// 第一步注册
-		_, err = client.Register(ctx, monitor.GetHost().PB())
+		_, err = client.ReportSystemInfo(ctx, monitor.GetHost().PB())
 		if err != nil {
-			log.Printf("client.Register err: %v", err)
+			log.Printf("client.ReportSystemInfo err: %v", err)
 			retry()
 			continue
 		}
-		// 心跳接收控制命令
-		hc, err = client.Heartbeat(ctx, &pb.Beat{
-			Timestamp: fmt.Sprintf("%v", time.Now()),
-		})
+		// 执行 Task
+		tasks, err := client.RequestTask(ctx, monitor.GetHost().PB())
 		if err != nil {
-			log.Printf("client.Heartbeat err: %v", err)
+			log.Printf("client.RequestTask err: %v", err)
 			retry()
 			continue
 		}
-		err = receiveCommand(hc)
-		log.Printf("receiveCommand exit to main: %v", err)
+		err = receiveTasks(tasks)
+		log.Printf("receiveTasks exit to main: %v", err)
 		retry()
 	}
 }
 
-func receiveCommand(hc pb.NezhaService_HeartbeatClient) error {
+func receiveTasks(tasks pb.NezhaService_RequestTaskClient) error {
 	var err error
-	var action *pb.Command
-	defer log.Printf("receiveCommand exit %v %v => %v", time.Now(), action, err)
+	defer log.Printf("receiveTasks exit %v => %v", time.Now(), err)
 	for {
-		action, err = hc.Recv()
-		if err == io.EOF {
-			return nil
-		}
+		var task *pb.Task
+		task, err = tasks.Recv()
 		if err != nil {
 			return err
 		}
-		switch action.GetType() {
-		case model.MTReportState:
-			endReport = time.Now().Add(time.Minute * 10)
-		default:
-			log.Printf("Unknown action: %v", action)
-		}
+		go doTask(task)
 	}
 }
 
+func doTask(task *pb.Task) {
+	var result pb.TaskResult
+	result.Id = task.GetId()
+	result.Type = task.GetType()
+	switch task.GetType() {
+	case model.TaskTypeHTTPGET:
+		start := time.Now()
+		resp, err := httpClient.Get(task.GetData())
+		if err == nil {
+			result.Delay = float32(time.Now().Sub(start).Microseconds()) / 1000.0
+			if resp.StatusCode > 399 || resp.StatusCode < 200 {
+				err = errors.New("\n应用错误：" + resp.Status)
+			}
+		}
+		if err == nil {
+			if strings.HasPrefix(task.GetData(), "https://") {
+				c := cert.NewCert(task.GetData()[8:])
+				if c.Error != "" {
+					result.Data = "SSL证书错误：" + c.Error
+				} else {
+					result.Data = c.Issuer + "|" + c.NotAfter
+					result.Successful = true
+				}
+			} else {
+				result.Successful = true
+			}
+		} else {
+			result.Data = err.Error()
+		}
+	case model.TaskTypeICMPPing:
+		pinger, err := ping.NewPinger(task.GetData())
+		if err == nil {
+			pinger.SetPrivileged(true)
+			pinger.Count = 10
+			pinger.Timeout = time.Second * 20
+			err = pinger.Run() // Blocks until finished.
+		}
+		if err == nil {
+			result.Delay = float32(pinger.Statistics().AvgRtt.Microseconds()) / 1000.0
+			result.Successful = true
+		} else {
+			result.Data = err.Error()
+		}
+	case model.TaskTypeTCPPing:
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", task.GetData(), time.Second*10)
+		if err == nil {
+			conn.Write([]byte("ping\n"))
+			conn.Close()
+			result.Delay = float32(time.Now().Sub(start).Microseconds()) / 1000.0
+			result.Successful = true
+		} else {
+			result.Data = err.Error()
+		}
+	case model.TaskTypeCommand:
+		startedAt := time.Now()
+		var cmd *exec.Cmd
+		var endCh = make(chan struct{})
+		pg, err := utils.NewProcessExitGroup()
+		if err != nil {
+			// 进程组创建失败，直接退出
+			result.Data = err.Error()
+			client.ReportTask(ctx, &result)
+			return
+		}
+		timeout := time.NewTimer(time.Hour * 2)
+		if utils.IsWindows() {
+			cmd = exec.Command("cmd", "/c", task.GetData())
+		} else {
+			cmd = exec.Command("sh", "-c", task.GetData())
+		}
+		pg.AddProcess(cmd)
+		go func() {
+			select {
+			case <-timeout.C:
+				result.Data = "任务执行超时\n"
+				close(endCh)
+				pg.Dispose()
+			case <-endCh:
+				timeout.Stop()
+			}
+		}()
+		output, err := cmd.Output()
+		if err != nil {
+			result.Data += fmt.Sprintf("%s\n%s", string(output), err.Error())
+		} else {
+			close(endCh)
+			result.Data = string(output)
+			result.Successful = true
+		}
+		result.Delay = float32(time.Now().Sub(startedAt).Seconds())
+	default:
+		log.Printf("Unknown action: %v", task)
+	}
+	client.ReportTask(ctx, &result)
+}
+
 func reportState() {
+	var lastReportHostInfo time.Time
 	var err error
-	defer log.Printf("reportState exit %v %v => %v", endReport, time.Now(), err)
+	defer log.Printf("reportState exit %v => %v", time.Now(), err)
 	for {
-		if endReport.After(time.Now()) {
+		if client != nil {
 			monitor.TrackNetworkSpeed()
-			_, err = client.ReportState(ctx, monitor.GetState(2).PB())
+			_, err = client.ReportSystemState(ctx, monitor.GetState(dao.ReportDelay).PB())
 			if err != nil {
 				log.Printf("reportState error %v", err)
 				time.Sleep(delayWhenError)
 			}
-		} else {
-			time.Sleep(time.Second * 1)
+			if lastReportHostInfo.Before(time.Now().Add(-10 * time.Minute)) {
+				lastReportHostInfo = time.Now()
+				client.ReportSystemInfo(ctx, monitor.GetHost().PB())
+			}
 		}
 	}
 }

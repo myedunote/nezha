@@ -26,7 +26,6 @@ type ipDotSbGeoIP struct {
 
 var netInSpeed, netOutSpeed, netInTransfer, netOutTransfer, lastUpdate uint64
 
-// GetHost ..
 func GetHost() *model.Host {
 	hi, _ := host.Info()
 	var cpus []string
@@ -38,11 +37,17 @@ func GetHost() *model.Host {
 	ms, _ := mem.SwapMemory()
 	u, _ := disk.Usage("/")
 	var ip ipDotSbGeoIP
-	resp, err := http.Get("https://api.ip.sb/geoip")
+	resp, err := http.Get("https://api-ipv4.ip.sb/geoip")
 	if err == nil {
 		defer resp.Body.Close()
 		body, _ := ioutil.ReadAll(resp.Body)
 		json.Unmarshal(body, &ip)
+	}
+	resp, err = http.Get("https://api-ipv6.ip.sb/ip")
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := ioutil.ReadAll(resp.Body)
+		ip.IP = fmt.Sprintf("ip(v4: %s, v6: %s)", ip.IP, body)
 	}
 	return &model.Host{
 		Platform:        hi.OS,
@@ -60,8 +65,7 @@ func GetHost() *model.Host {
 	}
 }
 
-// GetState ..
-func GetState(delay int64) *model.State {
+func GetState(delay int64) *model.HostState {
 	hi, _ := host.Info()
 	// Memory
 	mv, _ := mem.VirtualMemory()
@@ -75,7 +79,7 @@ func GetState(delay int64) *model.State {
 	// Disk
 	u, _ := disk.Usage("/")
 
-	return &model.State{
+	return &model.HostState{
 		CPU:            cpuPercent,
 		MemUsed:        mv.Used,
 		SwapUsed:       ms.Used,
@@ -88,7 +92,6 @@ func GetState(delay int64) *model.State {
 	}
 }
 
-// TrackNetworkSpeed ..
 func TrackNetworkSpeed() {
 	var innerNetInTransfer, innerNetOutTransfer uint64
 	nc, err := net.IOCounters(false)

@@ -6,7 +6,7 @@
         <form id="settingForm" class="ui large form" onsubmit="return false;">
             <div class="field">
                 <label>站点标题</label>
-                <input type="text" name="Title" placeholder="哪吒面板" value="{{.Conf.Site.Brand}}">
+                <input type="text" name="Title" placeholder="哪吒监控" value="{{.Conf.Site.Brand}}">
             </div>
             <div class="field">
                 <label>管理员列表</label>
@@ -14,9 +14,24 @@
             </div>
             <div class="field">
                 <select name="Theme">
-                    <option value="default">默认主题</option>
-                    <option value="hotaru">CakeMine-Hotaru</option>
+                    <option value="default"{{if eq .Conf.Site.Theme "default"}} selected="selected"{{end}}>默认主题</option>
+                    <option value="daynight"{{if eq .Conf.Site.Theme "daynight"}} selected="selected"{{end}}>JackieSung DayNight</option>
+                    <option value="hotaru"{{if eq .Conf.Site.Theme "hotaru"}} selected="selected"{{end}}>CokeMine Hotaru</option>
                 </select>
+            </div>
+            <div class="field">
+                <label>自定义代码(style、script 都可以)</label>
+                <textarea name="CustomCode">{{.Conf.Site.CustomCode}}</textarea>
+            </div>
+            <div class="field">
+                <label>前台查看密码</label>
+                <input type="text" name="ViewPassword" placeholder="" value="{{.Conf.Site.ViewPassword}}">
+            </div>
+            <div class="field">
+                <div class="ui nf-ssl checkbox">
+                    <input name="EnableIPChangeNotification" type="checkbox" tabindex="0" class="hidden">
+                    <label>开启 IP 变更提醒</label>
+                </div>
             </div>
             <button class="ui button" type="submit">保存</button>
         </form>
@@ -36,5 +51,9 @@
         })
         return false;
     })
+    $('.checkbox').checkbox()
+    {{if .Conf.EnableIPChangeNotification}}
+    $('.checkbox').checkbox('set checked')
+    {{end}}
 </script>
 {{end}}

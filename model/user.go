@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-github/v28/github"
-	"github.com/naiba/com"
+	"github.com/google/go-github/github"
+
+	"github.com/naiba/nezha/pkg/utils"
 )
 
-// User ...
 type User struct {
-	Common    `json:"common,omitempty"`
+	Common
 	Login     string `gorm:"UNIQUE_INDEX" json:"login,omitempty"` // 登录名
 	AvatarURL string `json:"avatar_url,omitempty"`                // 头像地址
 	Name      string `json:"name,omitempty"`                      // 昵称
@@ -26,7 +26,6 @@ type User struct {
 	TeamsID []uint64 `gorm:"-"`
 }
 
-// NewUserFromGitHub ..
 func NewUserFromGitHub(gu *github.User) User {
 	var u User
 	u.ID = uint64(gu.GetID())
@@ -45,8 +44,7 @@ func NewUserFromGitHub(gu *github.User) User {
 	return u
 }
 
-// IssueNewToken ...
 func (u *User) IssueNewToken() {
-	u.Token = com.MD5(fmt.Sprintf("%d%d%s", time.Now().UnixNano(), u.ID, u.Login))
+	u.Token = utils.MD5(fmt.Sprintf("%d%d%s", time.Now().UnixNano(), u.ID, u.Login))
 	u.TokenExpired = time.Now().AddDate(0, 2, 0)
 }

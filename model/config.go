@@ -10,25 +10,27 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Config ..
 type Config struct {
 	Debug bool
 	Site  struct {
-		Brand      string // 站点名称
-		CookieName string // 浏览器 Cookie 名称
-		Theme      string
+		Brand        string // 站点名称
+		CookieName   string // 浏览器 Cookie 名称
+		Theme        string
+		CustomCode   string
+		ViewPassword string // 前台查看密码
 	}
 	GitHub struct {
 		Admin        string // 管理员ID列表
 		ClientID     string
 		ClientSecret string
 	}
-	HTTPPort uint
+	HTTPPort                   uint
+	GRPCPort                   uint
+	EnableIPChangeNotification bool
 
 	v *viper.Viper
 }
 
-// ReadInConfig ..
 func (c *Config) Read(path string) error {
 	c.v = viper.New()
 	c.v.SetConfigFile(path)
