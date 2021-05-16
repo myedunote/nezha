@@ -1,37 +1,43 @@
-# 哪吒监控
+<div align="center" style="background-color: white">
+  <img width="500" style="max-width:100%" src="https://raw.githubusercontent.com/naiba/nezha/master/resource/static/brand.png" title="哪吒监控">
+  <br><br>
+<img src="https://img.shields.io/github/workflow/status/naiba/nezha/Dashboard%20image?label=Dash%20v0.7.1&logo=github&style=for-the-badge">&nbsp;<img src="https://img.shields.io/github/v/release/naiba/nezha?color=brightgreen&label=Agent&style=for-the-badge&logo=github">&nbsp;<img src="https://img.shields.io/github/workflow/status/naiba/nezha/Agent%20release?label=Agent%20CI&logo=github&style=for-the-badge">&nbsp;<img src="https://img.shields.io/badge/Installer-v0.6.0-brightgreen?style=for-the-badge&logo=linux">
+  <br>
+  <p>:trollface: 哪吒监控 一站式轻监控轻运维系统。支持系统状态、HTTP(SSL 证书变更、即将到期、到期)、TCP、Ping 监控报警，命令批量执行和计划任务。</p>	
+</div>
 
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/naiba/nezha/Dashboard%20image?label=管理面板%20v0.4.9&logo=github&style=for-the-badge) ![Agent release](https://img.shields.io/github/v/release/naiba/nezha?color=brightgreen&label=Agent&style=for-the-badge&logo=github) ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/naiba/nezha/Agent%20release?label=Agent%20CI&logo=github&style=for-the-badge) ![shell](https://img.shields.io/badge/安装脚本-v0.4.6-brightgreen?style=for-the-badge&logo=linux)
+\>> 交流论坛：[打杂社区](https://daza.net/c/nezha) (Lemmy)
 
-:trollface: 哪吒监控 一站式轻监控轻运维系统。支持系统状态、HTTP(SSL 证书变更、即将到期、到期)、TCP、Ping 监控报警，命令批量执行和计划任务。
+\>> QQ 交流群：872069346 **加群要求：已搭建好哪吒监控 & 有 2+ 服务器**
 
-\>> QQ 交流群：955957790
+\>> [我们的用户](https://www.google.com/search?q="powered+by+哪吒监控%7C哪吒面板"&filter=0) (Google)
 
-\>> [我们的用户](https://www.google.com/search?q="powered+by+哪吒"+"监控%7C面板"&filter=0) (Google)
-
-| 默认主题                                                | DayNight [@JackieSung](https://github.com/JackieSung4ev) | hotaru                        |
+| 默认主题                                                | DayNight [@JackieSung](https://github.com/JackieSung4ev) | hotaru                                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | ![首页截图1](https://s3.ax1x.com/2020/12/07/DvTCwD.jpg) | <img src="https://s3.ax1x.com/2021/01/20/sfJv2q.jpg"/>   | <img src="https://s3.ax1x.com/2020/12/09/rPF4xJ.png" width="1600px" /> |
 
 ## 安装脚本
 
-建议使用 WatchTower 自动更新面板，Windows 终端可以使用 nssm 配置自启动（见尾部教程）
+**推荐配置：** 安装前准备 _两个域名_，一个可以 **接入 CDN** 作为 _公开访问_，比如 (status.nai.ba)；另外一个解析到面板服务器作为 Agent 连接 Dashboard 使用，**不能接入 CDN** 直接暴露面板主机 IP，比如（randomdashboard.nai.ba）。
 
 ```shell
-curl -L https://raw.githubusercontent.com/naiba/nezha/master/script/install.sh -o nezha.sh && chmod +x nezha.sh
-./nezha.sh
+curl -sSL https://raw.githubusercontent.com/naiba/nezha/master/script/fetch.sh | bash
+/opt/nezha/nezha.sh
 ```
 
-_\* 目前安装脚本仅支持 CentOS 7+ / Debian 8+ / Ubuntu 16+，Windows 及 其他 Linux 发行版请在 Release 处下载对应二进制文件。_
-
-<details>
-    <summary>国内镜像加速：（有缓存，版本更新不及时，能不用尽量不用，非作者维护）</summary>
+国内镜像加速：
 
 ```shell
-curl -L https://raw.sevencdn.com/naiba/nezha/master/script/install.sh -o nezha.sh && chmod +x nezha.sh
-CN=true ./nezha.sh
+curl -sSL https://cdn.jsdelivr.net/gh/naiba/nezha@master/script/fetch.sh | CN=true bash
+CN=true /opt/nezha/nezha.sh
 ```
 
-</details>
+再次运行仅需:
+```
+/opt/nezha/nezha.sh
+```
+
+_\* 使用 WatchTower 可以自动更新面板，Windows 终端可以使用 nssm 配置自启动（见尾部教程）_
 
 ## 功能说明
 
@@ -58,11 +64,13 @@ URL 里面也可放置占位符，请求时会进行简单的字符串替换。
 1. 添加通知方式
 
    - server 酱示例
+
      - 名称：server 酱
      - URL：https://sc.ftqq.com/SCUrandomkeys.send?text=#NEZHA#
      - 请求方式: GET
      - 请求类型: 默认
      - Body: 空
+
    - wxpusher 示例，需要关注你的应用
 
      - 名称: wxpusher
@@ -72,6 +80,7 @@ URL 里面也可放置占位符，请求时会进行简单的字符串替换。
      - Body: `{"appToken":"你的appToken","topicIds":[],"content":"#NEZHA#","contentType":"1","uids":["你的uid"]}`
 
    - telegram 示例 [@haitau](https://github.com/haitau) 贡献
+
      - 名称：telegram 机器人消息通知
      - URL：https://api.telegram.org/botXXXXXX/sendMessage?chat_id=YYYYYY&text=#NEZHA#
      - 请求方式: GET
@@ -97,7 +106,7 @@ URL 里面也可放置占位符，请求时会进行简单的字符串替换。
   - cpu、memory、swap、disk：Min/Max 数值为占用百分比
   - net_in_speed(入站网速)、net_out_speed(出站网速)、net_all_speed(双向网速)、transfer_in(入站流量)、transfer_out(出站流量)、transfer_all(双向流量)：Min/Max 数值为字节（1kb=1024，1mb = 1024\*1024）
   - offline：不支持 Min/Max 参数
-- Duration：持续秒数，监控比较简陋，取持续时间内的 70 采样结果
+- Duration：持续秒数，监控比较简陋，取持续时间内的 70% 采样结果
 - Ignore: `{"1": true, "2":false}` 忽略此规则的服务器 ID 列表
 </details>
 
@@ -121,7 +130,17 @@ URL 里面也可放置占位符，请求时会进行简单的字符串替换。
   </style>
   ```
 
-- 默认主题修改 LOGO、移除版权示例（来自 [@iLay1678](https://github.com/iLay1678)，欢迎 PR）
+- DayNight 主题更改进度条颜色示例（来自 [@hyt-allen-xu](https://github.com/hyt-allen-xu)）
+
+  ```
+  <style>
+  .ui.fine.progress> .progress-bar {
+    background-color: #00a7d0 !important;
+  }
+  </style>
+  ```
+
+- 默认主题修改 LOGO、移除版权示例（来自 [@iLay1678](https://github.com/iLay1678)）
 
   ```
   <style>
@@ -147,15 +166,27 @@ URL 里面也可放置占位符，请求时会进行简单的字符串替换。
   </script>
   ```
 
+- DayNight 移除版权示例（来自 [@hyt-allen-xu](https://github.com/hyt-allen-xu)）
+
+  ```
+  <script>
+  window.onload = function(){
+  var footer=document.querySelector("div.footer-container")
+  footer.innerHTML="©2021 你的名字 & Powered by 你的名字"
+  footer.style.visibility="visible"
+  }
+  </script>
+  ```
+
 - hotaru 主题更改背景图片示例
 
-      ```
-      <style>
-      .hotaru-cover {
-          background: url(https://s3.ax1x.com/2020/12/08/DzHv6A.jpg) center;
-      }
-      </style>
-      ```
+  ```
+  <style>
+  .hotaru-cover {
+     background: url(https://s3.ax1x.com/2020/12/08/DzHv6A.jpg) center;
+  }
+  </style>
+  ```
 
 </details>
 

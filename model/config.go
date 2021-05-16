@@ -4,10 +4,17 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+)
+
+const (
+	ConfigTypeGitHub = "github"
+	ConfigTypeGitee  = "gitee"
 )
 
 type Config struct {
@@ -19,16 +26,19 @@ type Config struct {
 		CustomCode   string
 		ViewPassword string // 前台查看密码
 	}
-	GitHub struct {
-		Admin        string // 管理员ID列表
+	Oauth2 struct {
+		Type         string
+		Admin        string // 管理员用户名列表
 		ClientID     string
 		ClientSecret string
 	}
 	HTTPPort                   uint
 	GRPCPort                   uint
 	EnableIPChangeNotification bool
+	IgnoredIPNotification      string // 忽略IP变更提醒的服务器列表
 
-	v *viper.Viper
+	v                              *viper.Viper
+	IgnoredIPNotificationServerIDs map[uint64]struct{}
 }
 
 func (c *Config) Read(path string) error {
@@ -48,6 +58,8 @@ func (c *Config) Read(path string) error {
 		c.Site.Theme = "default"
 	}
 
+	c.updateIgnoredIPNotificationID()
+
 	c.v.OnConfigChange(func(in fsnotify.Event) {
 		c.v.Unmarshal(c)
 		fmt.Println("配置文件更新，重载配置", c)
@@ -57,7 +69,19 @@ func (c *Config) Read(path string) error {
 	return nil
 }
 
+func (c *Config) updateIgnoredIPNotificationID() {
+	c.IgnoredIPNotificationServerIDs = make(map[uint64]struct{})
+	splitedIDs := strings.Split(c.IgnoredIPNotification, ",")
+	for i := 0; i < len(splitedIDs); i++ {
+		id, _ := strconv.ParseUint(splitedIDs[i], 10, 64)
+		if id > 0 {
+			c.IgnoredIPNotificationServerIDs[id] = struct{}{}
+		}
+	}
+}
+
 func (c *Config) Save() error {
+	c.updateIgnoredIPNotificationID()
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err

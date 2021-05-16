@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -73,6 +74,7 @@ func (ma *memberAPI) delete(c *gin.Context) {
 	case "monitor":
 		err = dao.DB.Delete(&model.Monitor{}, "id = ?", id).Error
 		if err == nil {
+			dao.ServiceSentinelShared.OnMonitorDelete(id)
 			err = dao.DB.Delete(&model.MonitorHistory{}, "monitor_id = ?", id).Error
 		}
 	case "cron":
@@ -190,10 +192,12 @@ func (ma *memberAPI) addOrEditServer(c *gin.Context) {
 }
 
 type monitorForm struct {
-	ID     uint64
-	Name   string
-	Target string
-	Type   uint8
+	ID             uint64
+	Name           string
+	Target         string
+	Type           uint8
+	Notify         string
+	SkipServersRaw string
 }
 
 func (ma *memberAPI) addOrEditMonitor(c *gin.Context) {
@@ -202,9 +206,11 @@ func (ma *memberAPI) addOrEditMonitor(c *gin.Context) {
 	err := c.ShouldBindJSON(&mf)
 	if err == nil {
 		m.Name = mf.Name
-		m.Target = mf.Target
+		m.Target = strings.TrimSpace(mf.Target)
 		m.Type = mf.Type
 		m.ID = mf.ID
+		m.SkipServersRaw = mf.SkipServersRaw
+		m.Notify = mf.Notify == "on"
 	}
 	if err == nil {
 		if m.ID == 0 {
@@ -219,6 +225,8 @@ func (ma *memberAPI) addOrEditMonitor(c *gin.Context) {
 			Message: fmt.Sprintf("请求错误：%s", err),
 		})
 		return
+	} else {
+		dao.ServiceSentinelShared.OnMonitorUpdate()
 	}
 	c.JSON(http.StatusOK, model.Response{
 		Code: http.StatusOK,
@@ -447,6 +455,8 @@ type settingForm struct {
 	CustomCode                 string
 	ViewPassword               string
 	EnableIPChangeNotification string
+	IgnoredIPNotification      string
+	Oauth2Type                 string
 }
 
 func (ma *memberAPI) updateSetting(c *gin.Context) {
@@ -459,11 +469,13 @@ func (ma *memberAPI) updateSetting(c *gin.Context) {
 		return
 	}
 	dao.Conf.EnableIPChangeNotification = sf.EnableIPChangeNotification == "on"
+	dao.Conf.IgnoredIPNotification = sf.IgnoredIPNotification
 	dao.Conf.Site.Brand = sf.Title
 	dao.Conf.Site.Theme = sf.Theme
 	dao.Conf.Site.CustomCode = sf.CustomCode
 	dao.Conf.Site.ViewPassword = sf.ViewPassword
-	dao.Conf.GitHub.Admin = sf.Admin
+	dao.Conf.Oauth2.Type = sf.Oauth2Type
+	dao.Conf.Oauth2.Admin = sf.Admin
 	if err := dao.Conf.Save(); err != nil {
 		c.JSON(http.StatusOK, model.Response{
 			Code:    http.StatusBadRequest,
